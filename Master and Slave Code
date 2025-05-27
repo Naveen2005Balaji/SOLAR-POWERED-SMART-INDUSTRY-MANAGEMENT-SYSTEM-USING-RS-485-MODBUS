@@ -1,0 +1,128 @@
+Master
+#include <HardwareSerial.h>
+#include <DHT.h>
+
+#define DHTPIN 18  
+#define PIRPIN 19  
+#define LDRPIN 23 
+#define DHTTYPE DHT11
+
+#define DE_RE 4    
+HardwareSerial RS485Serial(2);  
+
+DHT dht(DHTPIN, DHTTYPE);
+
+void setup() {
+    Serial.begin(115200);
+    RS485Serial.begin(9600, SERIAL_8N1, 16, 17);
+
+    pinMode(PIRPIN, INPUT);
+    pinMode(LDRPIN, INPUT);
+    pinMode(DE_RE, OUTPUT);
+    digitalWrite(DE_RE, HIGH); 
+
+    dht.begin();
+}
+
+void loop() {
+    bool motion = digitalRead(PIRPIN);
+    float temperature = dht.readTemperature();
+    bool isDark = !digitalRead(LDRPIN);  
+    Serial.print(motion ? "Detected" : "Not Detected");
+    Serial.print(", Temperature: ");
+    Serial.print(temperature);
+    Serial.print(", LDR: ");
+    Serial.println(isDark ? "Bright" : "Dark");
+
+  
+    digitalWrite(DE_RE, HIGH); 
+    delay(10);
+    RS485Serial.print(motion);
+    RS485Serial.print(",");
+    RS485Serial.print(temperature);
+    RS485Serial.print(",");
+    RS485Serial.print(isDark);
+    RS485Serial.print("\n");
+    delay(10);
+    digitalWrite(DE_RE, LOW);  
+
+    delay(10000);  
+}
+
+
+Slave
+#define BLYNK_TEMPLATE_ID "TMPL3l4_Vzlo3"
+#define BLYNK_TEMPLATE_NAME "Industrial Monitoring Setting"
+#define BLYNK_AUTH_TOKEN "NMNCaKuxFFiUQXfVDs8qhVyLYA9xoqch"
+
+#include <WiFi.h>
+#include <BlynkSimpleEsp32.h>
+#include <Wire.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+
+
+char ssid[] = "Hotspot";    
+char pass[] = "12345678";   
+
+#define RELAY_PIN 26   
+#define LED_PIN 25     
+
+#define SCREEN_WIDTH 128  
+#define SCREEN_HEIGHT 64  
+#define OLED_RESET    -1  
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
+
+int relayState = 0;
+int ledState = 0;
+
+
+void updateDisplay() {
+  display.clearDisplay();
+  display.setTextSize(1);  
+  display.setTextColor(WHITE);
+  display.setCursor(10, 20);
+  display.print("Lights: ");
+  display.println(relayState ? "ON" : "OFF");
+  display.setCursor(10, 35);
+  display.print("Fans: ");
+  display.println(ledState ? "ON" : "OFF");
+  display.display();
+}
+
+// Blynk button V1 -> Controls RELAY (Load 1)
+BLYNK_WRITE(V1) {
+  relayState = param.asInt();
+  digitalWrite(RELAY_PIN, relayState ? LOW : HIGH);  
+  updateDisplay();
+}
+
+// Blynk button V2 -> Controls LED (Load 2)
+BLYNK_WRITE(V2) {
+  ledState = param.asInt();
+  digitalWrite(LED_PIN, ledState ? LOW : HIGH); 
+  updateDisplay();
+}
+
+void setup() {
+  Serial.begin(115200);
+  Blynk.begin(BLYNK_AUTH_TOKEN, ssid, pass);
+  
+  pinMode(RELAY_PIN, OUTPUT);
+  pinMode(LED_PIN, OUTPUT);
+  
+  digitalWrite(RELAY_PIN, HIGH); 
+  digitalWrite(LED_PIN, HIGH);   
+
+  // Initialize OLED Display
+  if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) { // 0x3C is the default I2C address
+    Serial.println("SSD1306 allocation failed");
+    for (;;);
+  }
+  
+  updateDisplay();
+}
+
+void loop() {
+  Blynk.run();
+}
